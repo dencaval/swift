@@ -2408,6 +2408,28 @@ def validate_sync_to(value, allowed_sync_hosts, realms_conf):
     return (None, value, None, None)
 
 
+def check_sorting_config(sorting_method, read_affinity):
+    """
+    Check the sorting configuration for possible errors
+
+    :param sorting_method configured at proxy-server.conf or swift.conf
+    :param read_affinity configured at proxy-server.conf or swift.conf
+    :returns: read_affinity_sort_key or None
+    :raises: ValueError if the sorting configuration is invalid
+    """
+    if read_affinity:
+        if sorting_method == 'affinity':
+            try:
+                return affinity_key_function(read_affinity)
+            except ValueError as err:
+                raise ValueError("Invalid read_affinity value: %r (%s)" %
+                                 (read_affinity, err.message))
+        else:
+            raise ValueError("sorting_method is set to '%s', not 'affinity'; "
+                             "read_affinity setting will have no effect." %
+                             sorting_method)
+
+
 def affinity_key_function(affinity_str):
     """Turns an affinity config value into a function suitable for passing to
     sort(). After doing so, the array will be sorted with respect to the given

@@ -1149,7 +1149,7 @@ class NodeIter(object):
         want to filter or reorder the nodes.
     """
 
-    def __init__(self, app, ring, partition, node_iter=None):
+    def __init__(self, app, ring, partition, node_iter=None, policy=None):
         self.app = app
         self.ring = ring
         self.partition = partition
@@ -1165,7 +1165,8 @@ class NodeIter(object):
         # Use of list() here forcibly yanks the first N nodes (the primary
         # nodes) from node_iter, so the rest of its values are handoffs.
         self.primary_nodes = self.app.sort_nodes(
-            list(itertools.islice(node_iter, num_primary_nodes)))
+            list(itertools.islice(node_iter, num_primary_nodes)),
+            policy=policy)
         self.handoff_iter = node_iter
 
     def __iter__(self):
@@ -1412,7 +1413,7 @@ class Controller(object):
                     {'method': method, 'path': path})
 
     def make_requests(self, req, ring, part, method, path, headers,
-                      query_string='', overrides=None):
+                      query_string='', overrides=None, policy=None):
         """
         Sends an HTTP request to multiple nodes and aggregates the results.
         It attempts the primary nodes concurrently, then iterates over the
@@ -1432,7 +1433,8 @@ class Controller(object):
         :returns: a swob.Response object
         """
         start_nodes = ring.get_part_nodes(part)
-        nodes = GreenthreadSafeIterator(self.app.iter_nodes(ring, part))
+        nodes = GreenthreadSafeIterator(self.app.iter_nodes(ring, part,
+                                                            policy=policy))
         pile = GreenAsyncPile(len(start_nodes))
         for head in headers:
             pile.spawn(self._make_request, nodes, part, method, path,

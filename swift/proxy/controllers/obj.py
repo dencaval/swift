@@ -138,7 +138,7 @@ class BaseObjectController(Controller):
         self.container_name = unquote(container_name)
         self.object_name = unquote(object_name)
 
-    def iter_nodes_local_first(self, ring, partition):
+    def iter_nodes_local_first(self, ring, partition, policy=None):
         """
         Yields nodes for a ring partition.
 
@@ -155,7 +155,7 @@ class BaseObjectController(Controller):
 
         is_local = self.app.write_affinity_is_local_fn
         if is_local is None:
-            return self.app.iter_nodes(ring, partition)
+            return self.app.iter_nodes(ring, partition, policy=policy)
 
         primary_nodes = ring.get_part_nodes(partition)
         num_locals = self.app.write_affinity_node_count(len(primary_nodes))
@@ -174,7 +174,7 @@ class BaseObjectController(Controller):
                               all_nodes))
 
         return self.app.iter_nodes(
-            ring, partition, node_iter=local_first_node_iter)
+            ring, partition, node_iter=local_first_node_iter, policy=policy)
 
     def GETorHEAD(self, req):
         """Handle HTTP GET or HEAD requests."""
@@ -193,7 +193,7 @@ class BaseObjectController(Controller):
                 return aresp
         partition = obj_ring.get_part(
             self.account_name, self.container_name, self.object_name)
-        node_iter = self.app.iter_nodes(obj_ring, partition)
+        node_iter = self.app.iter_nodes(obj_ring, partition, policy)
 
         resp = self._reroute(policy)._get_or_head_response(
             req, node_iter, partition, policy)
@@ -260,6 +260,7 @@ class BaseObjectController(Controller):
             # pass the policy index to storage nodes via req header
             policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
                                            container_info['storage_policy'])
+            policy = POLICIES.get_by_index(policy_index)
             obj_ring = self.app.get_object_ring(policy_index)
             req.headers['X-Backend-Storage-Policy-Index'] = policy_index
             partition, nodes = obj_ring.get_nodes(
@@ -270,7 +271,8 @@ class BaseObjectController(Controller):
             headers = self._backend_requests(
                 req, len(nodes), container_partition, containers,
                 delete_at_container, delete_at_part, delete_at_nodes)
-            return self._post_object(req, obj_ring, partition, headers)
+            return self._post_object(req, obj_ring, partition, headers,
+                                     policy=policy)
 
     def _backend_requests(self, req, n_outgoing,
                           container_partition, containers,
@@ -609,7 +611,7 @@ class BaseObjectController(Controller):
         """
         obj_ring = policy.object_ring
         node_iter = GreenthreadSafeIterator(
-            self.iter_nodes_local_first(obj_ring, partition))
+            self.iter_nodes_local_first(obj_ring, partition, policy=policy))
         pile = GreenPile(len(nodes))
 
         for nheaders in outgoing_headers:
@@ -650,7 +652,7 @@ class BaseObjectController(Controller):
         """
         raise NotImplementedError()
 
-    def _delete_object(self, req, obj_ring, partition, headers):
+    def _delete_object(self, req, obj_ring, partition, headers, policy):
         """
         send object DELETE request to storage nodes. Subclasses of
         the BaseObjectController can provide their own implementation
@@ -666,10 +668,11 @@ class BaseObjectController(Controller):
         status_overrides = {404: 204}
         resp = self.make_requests(req, obj_ring,
                                   partition, 'DELETE', req.swift_entity_path,
-                                  headers, overrides=status_overrides)
+                                  headers, overrides=status_overrides,
+                                  policy=policy)
         return resp
 
-    def _post_object(self, req, obj_ring, partition, headers):
+    def _post_object(self, req, obj_ring, partition, headers, policy):
         """
         send object POST request to storage nodes.
 
@@ -680,7 +683,8 @@ class BaseObjectController(Controller):
         :return: Response object
         """
         resp = self.make_requests(req, obj_ring, partition,
-                                  'POST', req.swift_entity_path, headers)
+                                  'POST', req.swift_entity_path, headers,
+                                  policy=policy)
         return resp
 
     @public
@@ -768,6 +772,7 @@ class BaseObjectController(Controller):
         # pass the policy index to storage nodes via req header
         policy_index = req.headers.get('X-Backend-Storage-Policy-Index',
                                        container_info['storage_policy'])
+        policy = POLICIES.get_by_index(policy_index)
         obj_ring = self.app.get_object_ring(policy_index)
         # pass the policy index to storage nodes via req header
         req.headers['X-Backend-Storage-Policy-Index'] = policy_index
@@ -798,7 +803,8 @@ class BaseObjectController(Controller):
 
         headers = self._backend_requests(
             req, len(nodes), container_partition, containers)
-        return self._delete_object(req, obj_ring, partition, headers)
+        return self._delete_object(req, obj_ring, partition, headers,
+                                   policy=policy)
 
     def _reroute(self, policy):
         """

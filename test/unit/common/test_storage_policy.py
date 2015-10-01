@@ -944,6 +944,12 @@ class TestStoragePolicies(unittest.TestCase):
             ECStoragePolicy(11, 'done', is_deprecated=True,
                             ec_type='jerasure_rs_vand',
                             ec_ndata=10, ec_nparity=3),
+            StoragePolicy(5, 'five', sorting_method='timing'),
+            ECStoragePolicy(6, 'six', is_deprecated=True,
+                            ec_type='jerasure_rs_vand',
+                            ec_ndata=10, ec_nparity=3,
+                            sorting_method='affinity',
+                            read_affinity='r1=2'),
         ]
         policies = StoragePolicyCollection(test_policies)
         expected = {
@@ -952,7 +958,9 @@ class TestStoragePolicies(unittest.TestCase):
                 'name': 'zero',
                 'default': True,
                 'deprecated': False,
-                'policy_type': REPL_POLICY
+                'policy_type': REPL_POLICY,
+                'sorting_method': '',
+                'read_affinity': '',
             },
             (0, False): {
                 'name': 'zero',
@@ -963,7 +971,9 @@ class TestStoragePolicies(unittest.TestCase):
                 'name': 'one',
                 'default': False,
                 'deprecated': True,
-                'policy_type': REPL_POLICY
+                'policy_type': REPL_POLICY,
+                'sorting_method': '',
+                'read_affinity': '',
             },
             (1, False): {
                 'name': 'one',
@@ -975,6 +985,8 @@ class TestStoragePolicies(unittest.TestCase):
                 'default': False,
                 'deprecated': False,
                 'policy_type': EC_POLICY,
+                'sorting_method': '',
+                'read_affinity': '',
                 'ec_type': 'jerasure_rs_vand',
                 'ec_num_data_fragments': 10,
                 'ec_num_parity_fragments': 3,
@@ -989,6 +1001,8 @@ class TestStoragePolicies(unittest.TestCase):
                 'default': False,
                 'deprecated': True,
                 'policy_type': EC_POLICY,
+                'sorting_method': '',
+                'read_affinity': '',
                 'ec_type': 'jerasure_rs_vand',
                 'ec_num_data_fragments': 10,
                 'ec_num_parity_fragments': 3,
@@ -997,6 +1011,33 @@ class TestStoragePolicies(unittest.TestCase):
             (11, False): {
                 'name': 'done',
                 'deprecated': True,
+            },
+            (5, False): {
+                'name': 'five',
+            },
+            (5, True): {
+                'name': 'five',
+                'default': False,
+                'deprecated': False,
+                'policy_type': REPL_POLICY,
+                'sorting_method': 'timing',
+                'read_affinity': '',
+            },
+            (6, False): {
+                'name': 'six',
+                'deprecated': True,
+            },
+            (6, True): {
+                'name': 'six',
+                'default': False,
+                'deprecated': True,
+                'policy_type': EC_POLICY,
+                'sorting_method': 'affinity',
+                'read_affinity': 'r1=2',
+                'ec_type': 'jerasure_rs_vand',
+                'ec_num_data_fragments': 10,
+                'ec_num_parity_fragments': 3,
+                'ec_object_segment_size': DEFAULT_EC_OBJECT_SEGMENT_SIZE,
             },
         }
         self.maxDiff = None

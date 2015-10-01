@@ -414,26 +414,44 @@ class Application(object):
             self.logger.exception(_('ERROR Unhandled exception in request'))
             return HTTPServerError(request=req)
 
-    def sort_nodes(self, nodes):
-        '''
-        Sorts nodes in-place (and returns the sorted list) according to
-        the configured strategy. The default "sorting" is to randomly
-        shuffle the nodes. If the "timing" strategy is chosen, the nodes
-        are sorted according to the stored timing data.
-        '''
+    def sort_nodes(self, nodes, policy=None):
+        """ Sorts nodes in-place according to the configured strategy.
+
+        This method uses, as default, the "sorting_method" defined at
+        proxy-server.conf, but It can use a different strategy according to
+        the policy as long as the "sorting_method" configuration is overriden
+        for some storage_policy at swift.conf.
+
+        Calls from account and container controllers are expected to let None
+        for policy parameter.
+
+        The default "sorting_method" is to randomly shuffle the nodes.
+        If the "timing" strategy is chosen, the nodes are sorted according to
+        the stored timing data.
+
+        :param node: dictionary of node to sort
+        :param policy: Object Policy or None
+        :returns: sorted node list
+        """
+        if policy and policy.sorting_method:
+            sorting_method = policy.sorting_method
+            read_affinity_sort_key = policy.read_affinity_sort_key
+        else:
+            sorting_method = self.sorting_method
+            read_affinity_sort_key = self.read_affinity_sort_key
         # In the case of timing sorting, shuffling ensures that close timings
         # (ie within the rounding resolution) won't prefer one over another.
         # Python's sort is stable (http://wiki.python.org/moin/HowTo/Sorting/)
         shuffle(nodes)
-        if self.sorting_method == 'timing':
+        if sorting_method == 'timing':
             now = time()
 
             def key_func(node):
                 timing, expires = self.node_timings.get(node['ip'], (-1.0, 0))
                 return timing if expires > now else -1.0
             nodes.sort(key=key_func)
-        elif self.sorting_method == 'affinity':
-            nodes.sort(key=self.read_affinity_sort_key)
+        elif sorting_method == 'affinity':
+            nodes.sort(key=read_affinity_sort_key)
         return nodes
 
     def set_node_timing(self, node, timing):
@@ -505,8 +523,9 @@ class Application(object):
                           {'msg': msg, 'ip': node['ip'],
                           'port': node['port'], 'device': node['device']})
 
-    def iter_nodes(self, ring, partition, node_iter=None):
-        return NodeIter(self, ring, partition, node_iter=node_iter)
+    def iter_nodes(self, ring, partition, node_iter=None, policy=None):
+        return NodeIter(self, ring, partition, node_iter=node_iter,
+                        policy=policy)
 
     def exception_occurred(self, node, typ, additional_info,
                            **kwargs):

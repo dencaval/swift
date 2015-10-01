@@ -22,7 +22,7 @@ from six.moves.configparser import ConfigParser
 from swift.common.utils import (
     config_true_value, SWIFT_CONF_FILE, whataremyips)
 from swift.common.ring import Ring, RingData
-from swift.common.utils import quorum_size
+from swift.common.utils import quorum_size, check_sorting_config
 from swift.common.exceptions import RingValidationError
 from pyeclib.ec_iface import ECDriver, ECDriverError, VALID_EC_TYPES
 
@@ -161,7 +161,7 @@ class BaseStoragePolicy(object):
     policy_type_to_policy_cls = {}
 
     def __init__(self, idx, name='', is_default=False, is_deprecated=False,
-                 object_ring=None):
+                 object_ring=None, **kwargs):
         # do not allow BaseStoragePolicy class to be instantiated directly
         if type(self) == BaseStoragePolicy:
             raise TypeError("Can't instantiate BaseStoragePolicy directly")
@@ -191,6 +191,13 @@ class BaseStoragePolicy(object):
         if self.is_deprecated and self.is_default:
             raise PolicyError('Deprecated policy can not be default.  '
                               'Invalid config', self.idx)
+        self.sorting_method = kwargs.get('sorting_method', '')
+        self.read_affinity = kwargs.get('read_affinity', '')
+        try:
+            self.read_affinity_sort_key =\
+                check_sorting_config(self.sorting_method, self.read_affinity)
+        except ValueError as err:
+            raise PolicyError(err.message, self.idx)
         self.ring_name = _get_policy_string('object', self.idx)
         self.object_ring = object_ring
 
@@ -202,9 +209,11 @@ class BaseStoragePolicy(object):
 
     def __repr__(self):
         return ("%s(%d, %r, is_default=%s, "
-                "is_deprecated=%s, policy_type=%r)") % \
+                "is_deprecated=%s, policy_type=%r, "
+                "sorting_method=%s, read_affinity=%s)") % \
             (self.__class__.__name__, self.idx, self.name,
-             self.is_default, self.is_deprecated, self.policy_type)
+             self.is_default, self.is_deprecated, self.policy_type,
+             self.sorting_method, self.read_affinity)
 
     @classmethod
     def register(cls, policy_type):
@@ -234,6 +243,8 @@ class BaseStoragePolicy(object):
             'policy_type': 'policy_type',
             'default': 'is_default',
             'deprecated': 'is_deprecated',
+            'sorting_method': 'sorting_method',
+            'read_affinity': 'read_affinity',
         }
 
     @classmethod
@@ -266,6 +277,8 @@ class BaseStoragePolicy(object):
                 info.pop('default')
             if not self.is_deprecated:
                 info.pop('deprecated')
+            info.pop("sorting_method")
+            info.pop("read_affinity")
             info.pop('policy_type')
         return info
 
@@ -332,10 +345,10 @@ class ECStoragePolicy(BaseStoragePolicy):
     def __init__(self, idx, name='', is_default=False,
                  is_deprecated=False, object_ring=None,
                  ec_segment_size=DEFAULT_EC_OBJECT_SEGMENT_SIZE,
-                 ec_type=None, ec_ndata=None, ec_nparity=None):
+                 ec_type=None, ec_ndata=None, ec_nparity=None, **kwargs):
 
         super(ECStoragePolicy, self).__init__(
-            idx, name, is_default, is_deprecated, object_ring)
+            idx, name, is_default, is_deprecated, object_ring, **kwargs)
 
         # Validate erasure_coding policy specific members
         # ec_type is one of the EC implementations supported by PyEClib
